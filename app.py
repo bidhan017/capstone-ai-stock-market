@@ -1,7 +1,5 @@
 import streamlit as st
 import os
-import psycopg2
-import requests
 import pandas as pd
 import plotly.graph_objects as go
 from datetime import datetime, timedelta
@@ -20,10 +18,8 @@ st.set_page_config(
 )
 
 # Configuration from environment variables
-LAKEBASE_HOST = os.getenv("LAKEBASE_POSTGRES_HOST")
-LAKEBASE_DATABASE = os.getenv("LAKEBASE_POSTGRES_DATABASE")
-VECTOR_SEARCH_ENDPOINT = os.getenv("VECTOR_SEARCH_ENDPOINT", "")
-VECTOR_INDEX_NAME = os.getenv("VECTOR_INDEX_NAME", "")
+VECTOR_SEARCH_ENDPOINT = os.getenv("VECTOR_SEARCH_ENDPOINT", "vector_search")
+VECTOR_INDEX_NAME = os.getenv("VECTOR_INDEX_NAME", "main.stock_research.document_embeddings_index")
 EMBEDDING_MODEL_ENDPOINT = os.getenv("EMBEDDING_MODEL_ENDPOINT", "databricks-bge-large-en")
 
 # Initialize clients
@@ -38,26 +34,6 @@ if "user_email" not in st.session_state:
     st.session_state.user_email = "demo@example.com"
 
 # Helper functions
-@st.cache_resource
-def get_db_connection():
-    """Get connection to Lakebase Postgres."""
-    if not LAKEBASE_HOST:
-        st.error("Lakebase configuration missing. Check your app.yaml settings.")
-        return None
-    
-    # Generate OAuth token
-    token_response = w.postgres.generate_database_credential(
-        endpoint=os.getenv("LAKEBASE_ENDPOINT_NAME")
-    )
-    
-    return psycopg2.connect(
-        host=LAKEBASE_HOST,
-        port=5432,
-        database=LAKEBASE_DATABASE,
-        user="oauth",
-        password=token_response.password,
-        sslmode="require"
-    )
 
 def get_embedding(text: str) -> List[float]:
     """Generate embedding for text."""
@@ -149,124 +125,20 @@ def get_stock_history(ticker: str, start_date: str, end_date: str) -> Dict:
     except Exception as e:
         return {"error": str(e)}
 
-# Database operations
+# In-memory storage (session state)
 def get_watchlist(user_email: str) -> pd.DataFrame:
-    """Get user's watchlist."""
-    conn = get_db_connection()
-    if not conn:
-        return pd.DataFrame()
-    
-    query = """
-        SELECT wt.ticker, wt.added_at 
-        FROM watchlist_tickers wt
-        JOIN watchlists w ON wt.watchlist_id = w.id
-        WHERE w.user_email = %s AND w.name = 'default'
-        ORDER BY wt.added_at DESC
-    """
-    
-    df = pd.read_sql_query(query, conn, params=(user_email,))
-    conn.close()
-    return df
+    if "watchlist" not in st.session_state:
+        st.session_state.watchlist = []
+    return pd.DataFrame(st.session_state.watchlist, columns=["ticker", "added_at"])
 
 def add_to_watchlist(ticker: str, user_email: str):
-    """Add ticker to watchlist."""
-    conn = get_db_connection()
-    if not conn:
-        return
-    
-    cursor = conn.cursor()
-    cursor.execute(
-        "INSERT INTO users (email, created_at) VALUES (%s, NOW()) ON CONFLICT (email) DO NOTHING",
-        (user_email,)
-    )
-    cursor.execute(
-        "SELECT id FROM watchlists WHERE user_email = %s AND name = 'default'",
-        (user_email,)
-    )
-    result = cursor.fetchone()
-    
-    if result:
-        watchlist_id = result[0]
-    else:
-        cursor.execute(
-            "INSERT INTO watchlists (user_email, name, created_at) VALUES (%s, 'default', NOW()) RETURNING id",
-            (user_email,)
-        )
-        watchlist_id = cursor.fetchone()[0]
-    
-    cursor.execute(
-        """INSERT INTO watchlist_tickers (watchlist_id, ticker, added_at) 
-           VALUES (%s, %s, NOW()) 
-           ON CONFLICT (watchlist_id, ticker) DO NOTHING""",
-        (watchlist_id, ticker.upper())
-    )
-    conn.commit()
-    cursor.close()
-    conn.close()
+    if "watchlist" not in st.session_state:
+        st.session_state.watchlist = []
+    st.session_state.watchlist.append({"ticker": ticker.upper(), "added_at": datetime.now()})
 
 def remove_from_watchlist(ticker: str, user_email: str):
-    """Remove ticker from watchlist."""
-    conn = get_db_connection()
-    if not conn:
-        return
-    
-    cursor = conn.cursor()
-    cursor.execute(
-        """DELETE FROM watchlist_tickers 
-           WHERE watchlist_id IN (
-               SELECT id FROM watchlists 
-               WHERE user_email = %s AND name = 'default'
-           ) AND ticker = %s""",
-        (user_email, ticker.upper())
-    )
-    conn.commit()
-    cursor.close()
-    conn.close()
-
-def save_research_note(ticker: str, note: str, user_email: str, note_type: str = "analysis"):
-    """Save research note."""
-    conn = get_db_connection()
-    if not conn:
-        return
-    
-    cursor = conn.cursor()
-    cursor.execute(
-        "INSERT INTO users (email, created_at) VALUES (%s, NOW()) ON CONFLICT (email) DO NOTHING",
-        (user_email,)
-    )
-    cursor.execute(
-        """INSERT INTO research_notes (user_email, ticker, note_type, content, created_at) 
-           VALUES (%s, %s, %s, %s, NOW())""",
-        (user_email, ticker.upper(), note_type, note)
-    )
-    conn.commit()
-    cursor.close()
-    conn.close()
-
-def get_research_notes(user_email: str, ticker: Optional[str] = None) -> pd.DataFrame:
-    """Get research notes."""
-    conn = get_db_connection()
-    if not conn:
-        return pd.DataFrame()
-    
-    if ticker:
-        query = """
-            SELECT id, ticker, note_type, content, created_at 
-            FROM research_notes 
-            WHERE user_email = %s AND ticker = %s
-            ORDER BY created_at DESC
-        """
-        df = pd.read_sql_query(query, conn, params=(user_email, ticker.upper()))
-    else:
-        query = """
-            SELECT id, ticker, note_type, content, created_at 
-            FROM research_notes 
-            WHERE user_email = %s
-            ORDER BY created_at DESC
-        """
-        df = pd.read_sql_query(query, conn, params=(user_email,))
-    conn.close()
-    return df
+    if "watchlist" in st.session_state:
+        st.session_state.watchlist = [w for w in st.session_state.watchlist if w["ticker"] != ticker.upper()]
 
 # UI Components
 def render_sidebar():
@@ -371,26 +243,7 @@ def render_stock_details(ticker: str):
     else:
         st.info(f"No news found for {ticker}")
     
-    # Research notes section
-    st.subheader("📝 Your Research Notes")
-    
-    notes_df = get_research_notes(st.session_state.user_email, ticker)
-    
-    if not notes_df.empty:
-        for _, note in notes_df.iterrows():
-            with st.expander(f"{note['note_type'].title()} - {note['created_at']}"):
-                st.write(note['content'])
-    
-    # Add new note
-    with st.form(f"note_form_{ticker}"):
-        note_content = st.text_area("Add Research Note")
-        note_type = st.selectbox("Note Type", ["analysis", "thesis", "alert", "other"])
-        
-        if st.form_submit_button("Save Note"):
-            if note_content:
-                save_research_note(ticker, note_content, st.session_state.user_email, note_type)
-                st.success("Note saved!")
-                st.rerun()
+    st.info("Note: Watchlist and notes are stored in session (temporary). Connect Lakebase for persistence.")
 
 def render_chat():
     """Render chat interface."""

@@ -1,44 +1,14 @@
-command: ["streamlit", "run", "app.py", "--server.port", "8080"]
+command:
+  - streamlit
+  - run
+  - app.py
+  - --server.port
+  - "8080"
 
 env:
-  # Lakebase configuration
-  - name: LAKEBASE_PROJECT_NAME
-    value: "new_database"
-
-  - name: LAKEBASE_BRANCH_NAME
-    value: "production"
-
-  - name: LAKEBASE_DATABASE_NAME
-    value: "databricks_postgres"
-
-  # These will be auto-populated if you init the app with --features lakebase
-  - name: LAKEBASE_POSTGRES_HOST
-    valueFrom:
-      databricksLakebase:
-        project: "new_database"
-        branch: "production"
-        database: "databricks_postgres"
-
-  - name: LAKEBASE_ENDPOINT_NAME
-    value: "projects/new_database/branches/production/endpoints/primary"
-
-  # Vector Search configuration (from secrets)
   - name: VECTOR_SEARCH_ENDPOINT
-    valueFrom:
-      databricksSecret:
-        scope: stock-research
-        key: vector-search-endpoint
-
+    value: vector_search
   - name: VECTOR_INDEX_NAME
-    valueFrom:
-      databricksSecret:
-        scope: stock-research
-        key: vector-search-index
-
+    value: main.stock_research.document_embeddings_index
   - name: EMBEDDING_MODEL_ENDPOINT
-    value: "databricks-bge-large-en"
-
-resources:
-  gpu: 0
-  cpu: 2
-  memory: 4Gi
+    value: databricks-bge-large-en
