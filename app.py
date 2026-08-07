@@ -32,8 +32,8 @@ def get_workspace_client():
     if _w is None:
         try:
             _w = WorkspaceClient()
-        except Exception as e:
-            st.error(f"Failed to initialize Workspace client: {e}")
+        except Exception:
+            pass  # Silently fail, caller will check for None
     return _w
 
 def get_vector_search_client():
@@ -41,8 +41,8 @@ def get_vector_search_client():
     if _vsc is None:
         try:
             _vsc = VectorSearchClient()
-        except Exception as e:
-            st.warning(f"Vector search unavailable: {e}")
+        except Exception:
+            pass  # Silently fail, caller will check for None
     return _vsc
 
 def get_mlflow_client():
@@ -50,8 +50,8 @@ def get_mlflow_client():
     if _mlflow_client is None:
         try:
             _mlflow_client = mlflow.deployments.get_deploy_client("databricks")
-        except Exception as e:
-            st.warning(f"MLflow client unavailable: {e}")
+        except Exception:
+            pass  # Silently fail, caller will check for None
     return _mlflow_client
 
 # Initialize session state
@@ -112,9 +112,8 @@ def semantic_search(query: str, doc_type: Optional[str] = None, ticker: Optional
                 "score": row[-1]
             })
         return docs
-    except Exception as e:
-        st.error(f"Search error: {e}")
-        return []
+    except Exception:
+        return []  # Silently return empty results on error
 
 def get_stock_quote(ticker: str) -> Dict:
     """Get current stock quote using yfinance."""
@@ -361,6 +360,11 @@ What would you like to know?"""
 # Main app
 def main():
     st.title("🤖 AI Stock Market Research Assistant")
+    
+    # Show feature availability status
+    vsc = get_vector_search_client()
+    if not vsc:
+        st.info("ℹ️ Vector Search is not available. Search and news features are disabled. Stock prices and watchlist work normally.")
     
     # Render sidebar
     render_sidebar()
