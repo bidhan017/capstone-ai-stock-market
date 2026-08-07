@@ -4,4 +4,4 @@ plotly>=5.17.0
 yfinance>=0.2.0
 databricks-sdk>=0.118.0
 databricks-vectorsearch>=0.75
-mlflow-skinny
+mlflow>=2.20.0
