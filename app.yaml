@@ -12,3 +12,7 @@ env:
     value: main.stock_research.document_embeddings_index
   - name: EMBEDDING_MODEL_ENDPOINT
     value: databricks-bge-large-en
+
+oauth:
+  scopes:
+    - all-apis
