@@ -264,21 +264,24 @@ def render_stock_details(ticker: str):
     # Show relevant news and context
     st.subheader("📰 Relevant News & Analysis")
     
-    search_results = semantic_search(
-        f"recent news and analysis for {ticker}",
-        ticker=ticker,
-        top_k=5
-    )
+    try:
+        search_results = semantic_search(
+            f"recent news and analysis for {ticker}",
+            ticker=ticker,
+            top_k=5
+        )
+        
+        if search_results:
+            for doc in search_results:
+                with st.expander(f"{doc['title']} ({doc['date']})"):
+                    st.write(doc['text'])
+                    st.caption(f"Type: {doc['doc_type']} | Relevance: {doc['score']:.4f}")
+        else:
+            st.info(f"No news found for {ticker}. Vector search is not configured.")
+    except Exception as e:
+        st.info(f"News search unavailable. Configure Vector Search to enable this feature.")
     
-    if search_results:
-        for doc in search_results:
-            with st.expander(f"{doc['title']} ({doc['date']})"):
-                st.write(doc['text'])
-                st.caption(f"Type: {doc['doc_type']} | Relevance: {doc['score']:.4f}")
-    else:
-        st.info(f"No news found for {ticker}")
-    
-    st.info("Note: Watchlist and notes are stored in session (temporary). Connect Lakebase for persistence.")
+    st.info("Note: Watchlist and notes are stored in session (temporary).")
 
 def render_chat():
     """Render chat interface."""
@@ -310,17 +313,20 @@ def process_chat_message(message: str) -> str:
     
     # Search query
     if "search" in message_lower or "find" in message_lower:
-        query = message.replace("search for", "").replace("find", "").strip()
-        results = semantic_search(query, top_k=3)
-        
-        if results:
-            response = f"I found {len(results)} relevant results:\n\n"
-            for i, doc in enumerate(results, 1):
-                response += f"**{i}. [{doc['ticker']}] {doc['title']}**\n"
-                response += f"{doc['text'][:200]}...\n\n"
-            return response
-        else:
-            return "I couldn't find any relevant results for that query."
+        try:
+            query = message.replace("search for", "").replace("find", "").strip()
+            results = semantic_search(query, top_k=3)
+            
+            if results:
+                response = f"I found {len(results)} relevant results:\n\n"
+                for i, doc in enumerate(results, 1):
+                    response += f"**{i}. [{doc['ticker']}] {doc['title']}**\n"
+                    response += f"{doc['text'][:200]}...\n\n"
+                return response
+            else:
+                return "I couldn't find any relevant results. Vector search may not be configured."
+        except Exception as e:
+            return "Search is currently unavailable. Please try asking about stock prices instead."
     
     # Price query
     elif "price" in message_lower:
