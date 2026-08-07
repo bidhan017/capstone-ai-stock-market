@@ -9,14 +9,6 @@ from databricks.sdk import WorkspaceClient
 from databricks.vector_search.client import VectorSearchClient
 import yfinance as yf
 
-# Page configuration
-st.set_page_config(
-    page_title="AI Stock Market Research Assistant",
-    page_icon="📈",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
-
 # Configuration from environment variables
 VECTOR_SEARCH_ENDPOINT = os.getenv("VECTOR_SEARCH_ENDPOINT", "vector_search")
 VECTOR_INDEX_NAME = os.getenv("VECTOR_INDEX_NAME", "main.stock_research.document_embeddings_index")
@@ -53,12 +45,6 @@ def get_mlflow_client():
         except Exception:
             pass  # Silently fail, caller will check for None
     return _mlflow_client
-
-# Initialize session state
-if "messages" not in st.session_state:
-    st.session_state.messages = []
-if "user_email" not in st.session_state:
-    st.session_state.user_email = "demo@example.com"
 
 # Helper functions
 
@@ -359,6 +345,20 @@ What would you like to know?"""
 
 # Main app
 def main():
+    # Page configuration must be first Streamlit command
+    st.set_page_config(
+        page_title="AI Stock Market Research Assistant",
+        page_icon="📈",
+        layout="wide",
+        initial_sidebar_state="expanded"
+    )
+    
+    # Initialize session state
+    if "messages" not in st.session_state:
+        st.session_state.messages = []
+    if "user_email" not in st.session_state:
+        st.session_state.user_email = "demo@example.com"
+    
     st.title("🤖 AI Stock Market Research Assistant")
     
     # Show feature availability status
