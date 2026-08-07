@@ -22,10 +22,37 @@ VECTOR_SEARCH_ENDPOINT = os.getenv("VECTOR_SEARCH_ENDPOINT", "vector_search")
 VECTOR_INDEX_NAME = os.getenv("VECTOR_INDEX_NAME", "main.stock_research.document_embeddings_index")
 EMBEDDING_MODEL_ENDPOINT = os.getenv("EMBEDDING_MODEL_ENDPOINT", "databricks-bge-large-en")
 
-# Initialize clients
-w = WorkspaceClient()
-vsc = VectorSearchClient()
-mlflow_client = mlflow.deployments.get_deploy_client("databricks")
+# Initialize clients lazily to avoid startup crashes
+_w = None
+_vsc = None
+_mlflow_client = None
+
+def get_workspace_client():
+    global _w
+    if _w is None:
+        try:
+            _w = WorkspaceClient()
+        except Exception as e:
+            st.error(f"Failed to initialize Workspace client: {e}")
+    return _w
+
+def get_vector_search_client():
+    global _vsc
+    if _vsc is None:
+        try:
+            _vsc = VectorSearchClient()
+        except Exception as e:
+            st.warning(f"Vector search unavailable: {e}")
+    return _vsc
+
+def get_mlflow_client():
+    global _mlflow_client
+    if _mlflow_client is None:
+        try:
+            _mlflow_client = mlflow.deployments.get_deploy_client("databricks")
+        except Exception as e:
+            st.warning(f"MLflow client unavailable: {e}")
+    return _mlflow_client
 
 # Initialize session state
 if "messages" not in st.session_state:
@@ -37,6 +64,9 @@ if "user_email" not in st.session_state:
 
 def get_embedding(text: str) -> List[float]:
     """Generate embedding for text."""
+    mlflow_client = get_mlflow_client()
+    if not mlflow_client:
+        raise Exception("MLflow client not available")
     response = mlflow_client.predict(
         endpoint=EMBEDDING_MODEL_ENDPOINT,
         inputs={"input": [text[:8000]]}
@@ -46,6 +76,9 @@ def get_embedding(text: str) -> List[float]:
 def semantic_search(query: str, doc_type: Optional[str] = None, ticker: Optional[str] = None, top_k: int = 5) -> List[Dict]:
     """Search vector index."""
     try:
+        vsc = get_vector_search_client()
+        if not vsc:
+            return []
         query_embedding = get_embedding(query)
         index = vsc.get_index(
             endpoint_name=VECTOR_SEARCH_ENDPOINT,
