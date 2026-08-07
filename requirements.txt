@@ -1,0 +1,7 @@
+streamlit>=1.28.0
+pandas>=2.0.0
+plotly>=5.17.0
+yfinance>=0.2.0
+databricks-sdk>=0.118.0
+databricks-vectorsearch>=0.75
+mlflow-skinny

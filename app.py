@@ -129,7 +129,9 @@ def get_stock_history(ticker: str, start_date: str, end_date: str) -> Dict:
 def get_watchlist(user_email: str) -> pd.DataFrame:
     if "watchlist" not in st.session_state:
         st.session_state.watchlist = []
-    return pd.DataFrame(st.session_state.watchlist, columns=["ticker", "added_at"])
+    if not st.session_state.watchlist:
+        return pd.DataFrame(columns=["ticker", "added_at"])
+    return pd.DataFrame(st.session_state.watchlist)
 
 def add_to_watchlist(ticker: str, user_email: str):
     if "watchlist" not in st.session_state:
