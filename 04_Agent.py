@@ -40,12 +40,15 @@ from typing import Dict, List, Optional, Any, TypedDict, Annotated
 import pandas as pd
 import yfinance as yf
 import operator
+import uuid
+import time
 
 # LangGraph imports
 from langgraph.graph import StateGraph, END
 from langgraph.prebuilt import ToolNode
-from langchain_core.messages import HumanMessage, AIMessage
+from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 from langchain_core.tools import tool
+from databricks_langchain import ChatDatabricks
 
 # Configuration
 LAKEBASE_PROJECT_NAME = "new_database"
@@ -334,20 +337,22 @@ def add_to_watchlist(ticker: str, user_email: str = DEFAULT_USER_EMAIL, watchlis
         cursor.execute("SELECT user_id FROM users WHERE email = %s", (user_email,))
         user_id = cursor.fetchone()[0]
         
-        # Ensure watchlist exists
+        # Ensure watchlist exists - check first since table has no unique constraint on (user_id, name)
         cursor.execute(
-            """INSERT INTO watchlists (user_id, name, created_at) 
-               VALUES (%s, %s, NOW()) 
-               ON CONFLICT (user_id, name) DO NOTHING 
-               RETURNING watchlist_id""",
+            "SELECT watchlist_id FROM watchlists WHERE user_id = %s AND name = %s",
             (user_id, watchlist_name)
         )
-        
         result = cursor.fetchone()
+        
         if result:
             watchlist_id = result[0]
         else:
-            cursor.execute("SELECT watchlist_id FROM watchlists WHERE user_id = %s AND name = %s", (user_id, watchlist_name))
+            cursor.execute(
+                """INSERT INTO watchlists (user_id, name, created_at) 
+                   VALUES (%s, %s, NOW()) 
+                   RETURNING watchlist_id""",
+                (user_id, watchlist_name)
+            )
             watchlist_id = cursor.fetchone()[0]
         
         # Add ticker
@@ -471,11 +476,20 @@ def save_research_note(ticker: str, note: str, user_email: str = DEFAULT_USER_EM
         conn = get_lakebase_connection()
         cursor = conn.cursor()
         
+        # Ensure user exists and get user_id
         cursor.execute(
-            """INSERT INTO research_notes (user_email, ticker, content, created_at) 
+            "INSERT INTO users (email, created_at) VALUES (%s, NOW()) ON CONFLICT (email) DO NOTHING",
+            (user_email,)
+        )
+        cursor.execute("SELECT user_id FROM users WHERE email = %s", (user_email,))
+        user_id = cursor.fetchone()[0]
+        
+        # Insert note with correct schema: user_id (not user_email), note_id (not id)
+        cursor.execute(
+            """INSERT INTO research_notes (user_id, ticker, content, created_at) 
                VALUES (%s, %s, %s, NOW()) 
-               RETURNING id""",
-            (user_email, ticker.upper(), note)
+               RETURNING note_id""",
+            (user_id, ticker.upper(), note)
         )
         
         note_id = cursor.fetchone()[0]
@@ -627,14 +641,36 @@ def should_continue(state: AgentState):
     return "end"
 
 
+# Initialize LLM with tool binding
+llm = ChatDatabricks(
+    endpoint="databricks-meta-llama-3-1-70b-instruct",
+    temperature=0.1
+)
+llm_with_tools = llm.bind_tools(tools)
+
+system_prompt = """You are an AI stock market research assistant with access to real-time market data, 
+semantic search over news/filings, and persistent storage.
+
+Your capabilities:
+- Get current prices and historical data (Yahoo Finance)
+- Search news and company profiles (Vector Search)
+- Manage user watchlists (Lakebase Postgres)
+- Save and retrieve research notes
+- Compare multiple stocks
+
+Always use tools to provide accurate, data-driven responses. When users ask about stocks, 
+fetch real data rather than making assumptions."""
+
 def call_model(state: AgentState):
     """Call the LLM to decide next action."""
-    # In production, call a real LLM here
-    response_message = AIMessage(
-        content="I've processed your request using the available tools.",
-        tool_calls=[]
-    )
-    return {"messages": [response_message]}
+    messages = state["messages"]
+    
+    # Add system prompt if this is the first message
+    if len(messages) == 1 or not any(isinstance(m, SystemMessage) for m in messages):
+        messages = [SystemMessage(content=system_prompt)] + messages
+    
+    response = llm_with_tools.invoke(messages)
+    return {"messages": [response]}
 
 
 # Create the graph
@@ -653,12 +689,52 @@ print("  Write tools: 3 (add/remove watchlist, save notes)")
 print("\\nAgent ready!")
 
 
+def run_agent(user_message: str, user_email: str = DEFAULT_USER_EMAIL) -> str:
+    """Run the agent with a user message and return the final response.
+    
+    Args:
+        user_message: User's input message
+        user_email: User's email for personalized operations
+    
+    Returns:
+        Agent's final response text
+    """
+    # Override default user email for tool calls
+    global DEFAULT_USER_EMAIL
+    original_default = DEFAULT_USER_EMAIL
+    DEFAULT_USER_EMAIL = user_email
+    
+    try:
+        # Create initial state with user message
+        initial_state = {
+            "messages": [HumanMessage(content=user_message)]
+        }
+        
+        # Run the agent
+        result = agent_executor.invoke(initial_state)
+        
+        # Extract final response
+        final_messages = result["messages"]
+        for msg in reversed(final_messages):
+            if isinstance(msg, AIMessage) and msg.content:
+                return msg.content
+        
+        return "I apologize, but I couldn't process your request."
+    
+    except Exception as e:
+        return f"Error: {str(e)}"
+    
+    finally:
+        # Restore default
+        DEFAULT_USER_EMAIL = original_default
+
+
 if __name__ == "__main__":
     print("\\n" + "="*80)
     print("AI STOCK MARKET RESEARCH ASSISTANT")
     print("="*80)
-    print("\\nExample tool usage:")
-    print("  get_current_price.invoke({'ticker': 'AAPL'})")
-    print("  search_news_and_filings.invoke({'query': 'EV sector'})")
-    print("  add_to_watchlist.invoke({'ticker': 'TSLA'})")
-    print("  compare_tickers.invoke({'tickers': ['AAPL', 'MSFT', 'GOOGL']})")
+    print("\\nExample agent usage:")
+    print("  run_agent('What is the current price of AAPL?')")
+    print("  run_agent('Add TSLA to my watchlist')")
+    print("  run_agent('Search for news about EV sector')")
+    print("  run_agent('Compare AAPL, MSFT, and GOOGL')")

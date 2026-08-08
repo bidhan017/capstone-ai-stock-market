@@ -1,5 +1,6 @@
 import streamlit as st
 import os
+import sys
 import pandas as pd
 import plotly.graph_objects as go
 import plotly.express as px
@@ -10,6 +11,26 @@ from sentence_transformers import SentenceTransformer
 import yfinance as yf
 import pickle
 from databricks import sql as databricks_sql
+import psycopg2
+from databricks.sdk import WorkspaceClient
+
+# Import the agent (assumes 04_Agent.py is in same directory or PYTHONPATH)
+try:
+    # Add current directory to path for imports
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    if current_dir not in sys.path:
+        sys.path.insert(0, current_dir)
+    
+    # Import agent runner
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("agent_module", os.path.join(current_dir, "04_Agent.py"))
+    agent_module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(agent_module)
+    run_agent = agent_module.run_agent
+    AGENT_AVAILABLE = True
+except Exception as e:
+    AGENT_AVAILABLE = False
+    print(f"Agent not available: {e}")
 
 # Load resources (cached to avoid reloading)
 @st.cache_resource
@@ -111,8 +132,66 @@ def get_stock_history(ticker: str, start_date: str, end_date: str) -> Dict:
     except Exception as e:
         return {"error": str(e)}
 
-# In-memory storage (session state)
+# Lakebase configuration
+LAKEBASE_PROJECT_NAME = os.getenv("LAKEBASE_PROJECT", "new_database")
+LAKEBASE_BRANCH_NAME = os.getenv("LAKEBASE_BRANCH", "production")
+LAKEBASE_DATABASE_NAME = os.getenv("LAKEBASE_DATABASE", "databricks_postgres")
+
+@st.cache_resource
+def get_lakebase_connection():
+    """Get persistent psycopg2 connection to Lakebase Postgres."""
+    try:
+        w = WorkspaceClient()
+        endpoints = list(w.postgres.list_endpoints(
+            parent=f"projects/{LAKEBASE_PROJECT_NAME}/branches/{LAKEBASE_BRANCH_NAME}"
+        ))
+        
+        if not endpoints:
+            return None
+        
+        endpoint_path = endpoints[0].name
+        token_response = w.postgres.generate_database_credential(endpoint=endpoint_path)
+        
+        host = f"{LAKEBASE_PROJECT_NAME}-{LAKEBASE_BRANCH_NAME}.cloud.databricks.com"
+        
+        conn = psycopg2.connect(
+            host=host,
+            port=5432,
+            database=LAKEBASE_DATABASE_NAME,
+            user="oauth",
+            password=token_response.password,
+            sslmode="require"
+        )
+        return conn
+    except Exception as e:
+        st.warning(f"Lakebase unavailable: {str(e)}. Using session-only storage.")
+        return None
+
+# Persistent watchlist storage (Lakebase with session fallback)
 def get_watchlist(user_email: str) -> pd.DataFrame:
+    """Get watchlist from Lakebase, fallback to session state."""
+    conn = get_lakebase_connection()
+    
+    if conn:
+        try:
+            cursor = conn.cursor()
+            cursor.execute(
+                """SELECT wt.ticker, wt.added_at 
+                   FROM watchlist_tickers wt
+                   JOIN watchlists w ON wt.watchlist_id = w.watchlist_id
+                   JOIN users u ON w.user_id = u.user_id
+                   WHERE u.email = %s AND w.name = 'default'
+                   ORDER BY wt.added_at DESC""",
+                (user_email,)
+            )
+            rows = cursor.fetchall()
+            cursor.close()
+            if rows:
+                return pd.DataFrame(rows, columns=["ticker", "added_at"])
+        except Exception:
+            pass
+    
+    # Fallback: session state
     if "watchlist" not in st.session_state:
         st.session_state.watchlist = []
     if not st.session_state.watchlist:
@@ -120,11 +199,75 @@ def get_watchlist(user_email: str) -> pd.DataFrame:
     return pd.DataFrame(st.session_state.watchlist)
 
 def add_to_watchlist(ticker: str, user_email: str):
+    """Add ticker to Lakebase watchlist, fallback to session state."""
+    conn = get_lakebase_connection()
+    
+    if conn:
+        try:
+            cursor = conn.cursor()
+            cursor.execute(
+                "INSERT INTO users (email, created_at) VALUES (%s, NOW()) ON CONFLICT (email) DO NOTHING",
+                (user_email,)
+            )
+            cursor.execute("SELECT user_id FROM users WHERE email = %s", (user_email,))
+            user_id = cursor.fetchone()[0]
+            
+            cursor.execute(
+                "SELECT watchlist_id FROM watchlists WHERE user_id = %s AND name = 'default'",
+                (user_id,)
+            )
+            result = cursor.fetchone()
+            
+            if result:
+                watchlist_id = result[0]
+            else:
+                cursor.execute(
+                    "INSERT INTO watchlists (user_id, name, created_at) VALUES (%s, 'default', NOW()) RETURNING watchlist_id",
+                    (user_id,)
+                )
+                watchlist_id = cursor.fetchone()[0]
+            
+            cursor.execute(
+                """INSERT INTO watchlist_tickers (watchlist_id, ticker, added_at) 
+                   VALUES (%s, %s, NOW()) 
+                   ON CONFLICT (watchlist_id, ticker) DO NOTHING""",
+                (watchlist_id, ticker.upper())
+            )
+            conn.commit()
+            cursor.close()
+            return
+        except Exception:
+            pass
+    
+    # Fallback: session state
     if "watchlist" not in st.session_state:
         st.session_state.watchlist = []
     st.session_state.watchlist.append({"ticker": ticker.upper(), "added_at": datetime.now()})
 
 def remove_from_watchlist(ticker: str, user_email: str):
+    """Remove ticker from Lakebase watchlist, fallback to session state."""
+    conn = get_lakebase_connection()
+    
+    if conn:
+        try:
+            cursor = conn.cursor()
+            cursor.execute(
+                """DELETE FROM watchlist_tickers 
+                   WHERE watchlist_id IN (
+                       SELECT w.watchlist_id 
+                       FROM watchlists w 
+                       JOIN users u ON w.user_id = u.user_id 
+                       WHERE u.email = %s AND w.name = 'default'
+                   ) AND ticker = %s""",
+                (user_email, ticker.upper())
+            )
+            conn.commit()
+            cursor.close()
+            return
+        except Exception:
+            pass
+    
+    # Fallback: session state
     if "watchlist" in st.session_state:
         st.session_state.watchlist = [w for w in st.session_state.watchlist if w["ticker"] != ticker.upper()]
 
@@ -234,7 +377,11 @@ def render_stock_details(ticker: str):
     except Exception:
         st.info("News search unavailable. Run notebook 03 to generate embeddings first.")
     
-    st.info("💡 Tip: Watchlist is stored in session (resets on refresh). Run notebook 01 for persistent storage with Lakebase.")
+    conn = get_lakebase_connection()
+    if conn:
+        st.success("✅ Watchlist is persistently stored in Lakebase Postgres.")
+    else:
+        st.info("💡 Watchlist is temporarily stored in session (resets on refresh). Lakebase not available.")
 
 def render_chat():
     """Render chat interface."""
@@ -261,55 +408,32 @@ def render_chat():
         st.session_state.messages.append({"role": "assistant", "content": response})
 
 def process_chat_message(message: str) -> str:
-    """Process chat message and generate response."""
-    message_lower = message.lower()
-    
-    # Search query
-    if "search" in message_lower or "find" in message_lower:
-        try:
-            query = message.replace("search for", "").replace("find", "").strip()
-            results = semantic_search(query, top_k=3)
-            
-            if results:
-                response = f"I found {len(results)} relevant results:\n\n"
-                for i, doc in enumerate(results, 1):
-                    response += f"**{i}. [{doc['ticker']}] {doc['title']}**\n"
-                    response += f"{doc['text'][:200]}...\n\n"
-                return response
-            else:
-                return "I couldn't find any relevant results. Run notebook 03 to generate embeddings."
-        except Exception:
-            return "Search is currently unavailable. Run notebook 03 to generate embeddings first."
-    
-    # Price query
-    elif "price" in message_lower:
-        words = message.split()
-        tickers = [w.upper() for w in words if w.isupper() and len(w) <= 5]
+    """Process chat message using the AI agent."""
+    if not AGENT_AVAILABLE:
+        return """⚠️ AI Agent is currently unavailable. 
         
-        if tickers:
-            ticker = tickers[0]
-            quote = get_stock_quote(ticker)
-            
-            if "error" not in quote:
-                return f"""**{ticker} Current Price:**
-                
-- Price: ${quote.get('price', 0):.2f}
-- Change: {quote.get('change', 0)} ({quote.get('change_percent', 0):+.2f}%)
-- Volume: {quote.get('volume', 0):,}
-- Market Cap: ${quote.get('market_cap', 0):,}
-"""
-            else:
-                return f"Sorry, I couldn't fetch price data for {ticker}."
+Please ensure:
+1. The agent module (04_Agent.py) is properly configured
+2. All required dependencies are installed
+3. Lakebase Postgres is accessible
+
+You can still use:
+- Sidebar watchlist (session-only)
+- Stock price lookups  
+- Manual search"""
     
-    # Default response
-    return """I can help you with:
-
-- **Search**: "Search for companies in the EV sector"
-- **Stock Info**: "What's the price of AAPL?"
-- **Analysis**: "Find news about interest rate exposure"
-- **Watchlist**: Use the sidebar to manage your watchlist
-
-What would you like to know?"""
+    try:
+        # Call the actual agent
+        response = run_agent(message, st.session_state.user_email)
+        return response
+    
+    except Exception as e:
+        return f"""⚠️ Agent error: {str(e)}
+        
+Falling back to basic features. You can:
+- Add tickers to watchlist via sidebar
+- Ask for stock prices (e.g., "price of AAPL")
+- Search news (if embeddings are available)"""
 
 # Main app
 def main():

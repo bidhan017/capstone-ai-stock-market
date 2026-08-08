@@ -1,7 +1,7 @@
 # Databricks notebook source
 # MAGIC %md
 # MAGIC # CDF Analytics Pipeline
-# MAGIC 
+# MAGIC
 # MAGIC This notebook reads Change Data Feed (CDF) from Delta tables to create analytics:
 # MAGIC - Agent tool call logs with CDF enabled
 # MAGIC - Watchlist mutations tracking
@@ -258,16 +258,30 @@ def get_usage_stats_last_7_days():
 # COMMAND ----------
 
 import uuid
+from pyspark.sql.types import StructType, StructField, StringType, TimestampType, BooleanType, LongType
 
 def insert_sample_tool_calls():
     """Insert sample tool call logs for testing."""
+    
+    # Define schema explicitly
+    schema = StructType([
+        StructField("call_id", StringType(), False),
+        StructField("timestamp", TimestampType(), False),
+        StructField("user_id", StringType(), False),
+        StructField("tool_name", StringType(), False),
+        StructField("ticker", StringType(), True),
+        StructField("success", BooleanType(), False),
+        StructField("error_message", StringType(), True),
+        StructField("execution_time_ms", LongType(), False)
+    ])
+    
     sample_data = [
         (str(uuid.uuid4()), datetime.now(), "user123", "get_stock_price", "AAPL", True, None, 150),
         (str(uuid.uuid4()), datetime.now(), "user123", "search_by_sector", "tech", True, None, 320),
         (str(uuid.uuid4()), datetime.now(), "user123", "add_to_watchlist", "TSLA", True, None, 89),
     ]
     
-    df = spark.createDataFrame(sample_data, ["call_id", "timestamp", "user_id", "tool_name", "ticker", "success", "error_message", "execution_time_ms"])
+    df = spark.createDataFrame(sample_data, schema=schema)
     df.write.format("delta").mode("append").saveAsTable(TOOL_CALLS_TABLE)
     print(f"✅ Inserted {df.count()} sample records")
 

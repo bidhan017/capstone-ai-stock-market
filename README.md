@@ -6,11 +6,12 @@ A complete AI-powered stock research platform combining Databricks Apps, Lakebas
 
 * **Real-time Market Data**: Live stock prices, historical data, and fundamentals via Yahoo Finance (yfinance) API
 * **Semantic Search**: Vector search over news articles and company profiles
-* **Personal Watchlist**: Track your favorite stocks with OLTP storage in Lakebase
-* **Research Notes**: Save and organize your analysis
-* **AI Agent**: Intelligent assistant with 11 tools for market research
-* **Interactive Dashboard**: Streamlit frontend with charts and analysis
+* **Personal Watchlist**: Persistently stored in Lakebase Postgres with automatic fallback to session state
+* **Research Notes**: Save and organize your analysis in Lakebase
+* **AI Agent**: Fully functional LangGraph agent with 11 tools and real LLM reasoning (Llama 3.1 70B)
+* **Interactive Dashboard**: Streamlit frontend with charts, analysis, and integrated agent chat
 * **CDF Analytics**: Real-time usage tracking with Change Data Feed for tool calls and watchlist mutations
+* **Secure by Design**: OAuth-based authentication, no hardcoded credentials, comprehensive .gitignore
 
 ## 📋 Architecture
 
@@ -176,22 +177,51 @@ Modify `setup_database_schema()` in notebook `04_Agent`, cell 17.
 
 ```
 capstone-ai-stock-market/
-├── 01_postgres_tables.ipynb      # Database schema setup
-├── 02_ingest_pipeline.ipynb      # Data ingestion (Spark)
-├── 03_embed_and_index.ipynb      # Vector search setup
-├── 04_Agent.ipynb                # AI agent definition
-├── app.py                        # Streamlit frontend
-├── app.yaml                      # Databricks App config
-└── README.md                     # This file
+├── 01_postgres_tables.py         # Database schema setup (Lakebase)
+├── 02_ingest_pipeline.py         # Data ingestion (Spark ETL)
+├── 03_embed_and_index.py         # Vector embeddings & search setup
+├── 04_Agent.py                   # AI agent with LangGraph & 11 tools
+├── 05_cdf_analytics.py           # CDF analytics pipeline
+├── app.py                        # Streamlit frontend with agent integration
+├── app.yaml                      # Databricks App configuration
+├── requirements.txt              # Python dependencies
+├── setup_secrets.py              # Secure secret configuration (not committed)
+└── README.md                     # Documentation
 ```
 
 ## 🎓 Capstone Requirements Met
 
-✅ **Data Pipeline in Spark**: Notebook 02 processes market data  
-✅ **Third-party API**: Yahoo Finance (yfinance) API Stocks API integration  
+✅ **Data Pipeline in Spark**: `02_ingest_pipeline.py` processes market data with ETL  
+✅ **Third-party API**: Yahoo Finance (yfinance) API integration with resilience  
 ✅ **Unstructured Data Processing**: Embeddings over news/company text  
-✅ **Databricks App**: Streamlit frontend (app.py)  
-✅ **AI Agent with Tools**: 11 tools for read/write operations  
+✅ **Databricks App**: Streamlit frontend with full agent integration  
+✅ **AI Agent with Tools**: 11 functional tools with real LLM reasoning  
+✅ **CDF Analytics**: Change Data Feed pipeline (`05_cdf_analytics.py`)  
+
+## ✅ Recent Improvements
+
+### Agent Functionality (Category 5) - ALL FIXED
+* ✅ **Fixed LLM Integration**: Agent now uses real Llama 3.1 70B model with tool binding
+* ✅ **Fixed Schema Mismatches**: 
+  - `save_research_note` now correctly uses `user_id` and `note_id` columns
+  - `add_to_watchlist` properly handles missing unique constraint on `(user_id, name)`
+* ✅ **Agent-UI Integration**: Chat interface now calls the actual agent via `run_agent()` function
+* ✅ **Reasoning Loop**: Full LangGraph workflow with tool calling and response generation
+
+### App Improvements (Category 4) - ALL FIXED
+* ✅ **Persistent Watchlist**: Now stored in Lakebase Postgres (not session-only)
+* ✅ **Dependencies Fixed**: Added `sentence-transformers` to requirements.txt
+* ✅ **Embeddings Path**: Multiple path fallbacks for robust file loading
+
+### CDF Analytics (Category 6) - COMPLETE
+* ✅ **Complete Pipeline**: `05_cdf_analytics.py` implements full CDF processing
+* ✅ **Analytics Tables**: Daily/hourly usage stats with tool call tracking
+* ✅ **Dashboard Integration**: Analytics queries ready for visualization
+
+### Security - VERIFIED
+* ✅ **No Exposed Secrets**: All credentials use OAuth tokens (dynamically generated)
+* ✅ **Comprehensive .gitignore**: Covers secrets, API keys, credentials, .env files
+* ✅ **Setup Script**: `setup_secrets.py` uses `getpass` for secure input
 
 ## 🔧 Troubleshooting
 
