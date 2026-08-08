@@ -15,8 +15,8 @@ A complete AI-powered stock research platform combining Databricks Apps, Lakebas
 
 ```
 ┌─────────────────┐      ┌──────────────────┐      ┌─────────────────┐
-│  Streamlit App  │─────▶│  AI Agent Tools  │─────▶│ Massive Stocks  │
-│   (Frontend)    │      │  (11 Functions)  │      │      API        │
+│  Streamlit App  │─────▶│  AI Agent Tools  │─────▶│ Yahoo Finance   │
+│   (Frontend)    │      │  (11 Functions)  │      │   (yfinance)    │
 └─────────────────┘      └──────────────────┘      └─────────────────┘
          │                        │
          │                        │
