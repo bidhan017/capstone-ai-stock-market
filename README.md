@@ -4,7 +4,7 @@ A complete AI-powered stock research platform combining Databricks Apps, Lakebas
 
 ## 🎯 Features
 
-* **Real-time Market Data**: Live stock prices, historical data, and fundamentals via Yahoo Finance (yfinance)
+* **Real-time Market Data**: Live stock prices, historical data, and fundamentals via Yahoo Finance (yfinance) API
 * **Semantic Search**: Vector search over news articles and company profiles
 * **Personal Watchlist**: Track your favorite stocks with OLTP storage in Lakebase
 * **Research Notes**: Save and organize your analysis
@@ -34,7 +34,7 @@ A complete AI-powered stock research platform combining Databricks Apps, Lakebas
 
 * Databricks workspace (Free Edition supported)
 * Unity Catalog enabled
-* Massive Stocks API key ([Get one here](https://massiveapi.com))
+* Yahoo Finance (yfinance) API key
 
 ### 2. Create Lakebase Project
 
@@ -189,7 +189,7 @@ capstone-ai-stock-market/
 ## 🎓 Capstone Requirements Met
 
 ✅ **Data Pipeline in Spark**: Notebook 02 processes market data  
-✅ **Third-party API**: Massive Stocks API integration  
+✅ **Third-party API**: Yahoo Finance (yfinance) API Stocks API integration  
 ✅ **Unstructured Data Processing**: Embeddings over news/company text  
 ✅ **Databricks App**: Streamlit frontend (app.py)  
 ✅ **AI Agent with Tools**: 11 tools for read/write operations  
@@ -204,9 +204,7 @@ capstone-ai-stock-market/
 * Ensure the index is created and synced (notebook 03)
 * Verify endpoint and index names in `app.yaml`
 
-### "API rate limit exceeded"
-* Massive Stocks free tier has rate limits
-* Consider upgrading or implementing caching
+
 
 ### Connection timeouts
 * Lakebase scales to zero after 5 minutes of inactivity
@@ -217,7 +215,6 @@ capstone-ai-stock-market/
 * [Lakebase Documentation](https://docs.databricks.com/lakebase/)
 * [Vector Search Guide](https://docs.databricks.com/vector-search/)
 * [Databricks Apps](https://docs.databricks.com/apps/)
-* [Massive Stocks API Docs](https://docs.massiveapi.com/)
 
 ## 🤝 Contributing
 
