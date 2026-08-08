@@ -65,7 +65,7 @@ Creates the database schema in Lakebase (users, watchlists, research notes, etc.
 ```
 
 #### Notebook 02: Data Ingestion Pipeline
-Fetches data from Massive Stocks API and processes it into Delta tables.
+Fetches data from Yahoo finance Stocks API and processes it into Delta tables.
 
 ```bash
 # Configure your API key in cell 2
@@ -104,8 +104,6 @@ env:
   - name: VECTOR_INDEX_NAME
     value: "catalog.schema.text_embeddings_index"
   
-  - name: MASSIVE_STOCKS_API_KEY
-    value: "your-api-key-here"
 ```
 
 ### 5. Deploy the App
@@ -203,8 +201,6 @@ capstone-ai-stock-market/
 ### "Vector Search error"
 * Ensure the index is created and synced (notebook 03)
 * Verify endpoint and index names in `app.yaml`
-
-
 
 ### Connection timeouts
 * Lakebase scales to zero after 5 minutes of inactivity
