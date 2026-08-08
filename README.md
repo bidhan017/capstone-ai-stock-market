@@ -10,6 +10,7 @@ A complete AI-powered stock research platform combining Databricks Apps, Lakebas
 * **Research Notes**: Save and organize your analysis
 * **AI Agent**: Intelligent assistant with 11 tools for market research
 * **Interactive Dashboard**: Streamlit frontend with charts and analysis
+* **CDF Analytics**: Real-time usage tracking with Change Data Feed for tool calls and watchlist mutations
 
 ## 📋 Architecture
 

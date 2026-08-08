@@ -14,3 +14,10 @@ env:
     value: "false"
   - name: STREAMLIT_SERVER_ENABLE_XSRF_PROTECTION
     value: "false"
+  
+  # Databricks SQL Warehouse for CDF Analytics
+  - name: DATABRICKS_HOST
+    value: "dbc-81d3c679-2bf9.cloud.databricks.com"  # Your workspace host
+  - name: DATABRICKS_HTTP_PATH
+    value: "/sql/1.0/warehouses/your-warehouse-id"  # SQL Warehouse HTTP path
+  # DATABRICKS_TOKEN is automatically injected by Databricks Apps

@@ -2,12 +2,14 @@ import streamlit as st
 import os
 import pandas as pd
 import plotly.graph_objects as go
+import plotly.express as px
 from datetime import datetime, timedelta
 from typing import List, Dict, Optional
 import numpy as np
 from sentence_transformers import SentenceTransformer
 import yfinance as yf
 import pickle
+from databricks import sql as databricks_sql
 
 # Load resources (cached to avoid reloading)
 @st.cache_resource
