@@ -4,7 +4,7 @@ A complete AI-powered stock research platform combining Databricks Apps, Lakebas
 
 ## 🎯 Features
 
-* **Real-time Market Data**: Live stock prices, historical data, and fundamentals via Massive Stocks API
+* **Real-time Market Data**: Live stock prices, historical data, and fundamentals via Yahoo Finance (yfinance)
 * **Semantic Search**: Vector search over news articles and company profiles
 * **Personal Watchlist**: Track your favorite stocks with OLTP storage in Lakebase
 * **Research Notes**: Save and organize your analysis
